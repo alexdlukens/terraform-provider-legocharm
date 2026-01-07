@@ -101,18 +101,45 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 var ErrNotFound = errors.New("not found")
 
 // GetUser queries the API for a user by username and returns the http response.
-func (c *Client) GetUser(username string) (*http.Response, error) {
-	req, err := c.NewRequest("GET", "/api/v1/users/?username="+url.QueryEscape(username), nil)
+func (c *Client) GetUserById(userId string) (*UserData, error) {
+
+	req, err := c.NewRequest("GET", "/api/v1/users/"+url.PathEscape(userId)+"/", nil)
 	if err != nil {
 		return nil, err
 	}
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var userData UserData
+	if err := json.Unmarshal(body, &userData); err != nil {
+		return nil, fmt.Errorf("unable to parse user response: %w (body: %s)", err, string(body))
+	}
+
+	return &userData, nil
+
 }
 
 // GetUserByUsername queries the API for a user by username and returns the
 // first matching user record or ErrNotFound if none exist.
 func (c *Client) GetUserByUsername(username string) (*UserData, error) {
-	resp, err := c.GetUser(username)
+	req, err := c.NewRequest("GET", "/api/v1/users/?username="+url.QueryEscape(username), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -181,23 +208,10 @@ func (c *Client) CreateUser(user UserCreateData) (*UserData, error) {
 
 	return &userData, nil
 }
-
-// DeleteUser deletes a user. If the provided url is an absolute URL it will be
-// used directly; otherwise it will be treated as a path relative to the
-// configured BaseURL.
-func (c *Client) DeleteUser(urlStr string) (*http.Response, error) {
-	if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
-		req, err := http.NewRequest("DELETE", urlStr, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.SetBasicAuth(c.Username, c.Password)
-		req.Header.Set("User-Agent", "terraform-provider-legocharm")
-		return c.Do(req)
-	}
+func (c *Client) DeleteUserById(id string) (*http.Response, error) {
 
 	// Otherwise treat as relative path.
-	req, err := c.NewRequest("DELETE", urlStr, nil)
+	req, err := c.NewRequest("DELETE", "/api/v1/users/"+url.PathEscape(id)+"/", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -235,6 +249,190 @@ func (c *Client) HasValidUserPassword(username string, password string) (bool, e
 
 }
 
+func (c *Client) GetDomainAccess(userId, domain string) (*DomainUserPermissionData, error) {
+
+	// get user to fetch username
+	user, err := c.GetUserById(userId)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get user data: %w", err)
+	}
+
+	username := user.Username
+
+	req, err := c.NewRequest("GET", "/api/v1/domain-user-permissions/?username="+url.QueryEscape(username)+"&fqdn="+url.QueryEscape(domain), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try to decode an array response first.
+	var list []DomainUserPermissionData
+	if err := json.Unmarshal(body, &list); err == nil {
+		if len(list) == 0 {
+			return nil, ErrNotFound
+		}
+		return &list[0], nil
+	}
+
+	// Fallback to single-object decode.
+	var single DomainUserPermissionData
+	if err := json.Unmarshal(body, &single); err == nil {
+		return &single, nil
+	}
+
+	return nil, fmt.Errorf("unable to parse domain access response: %s", string(body))
+}
+
+func (c *Client) GetDomain(fqdn string) (DomainData, error) {
+	req, err := c.NewRequest("GET", "/api/v1/domains/?fqdn="+url.QueryEscape(fqdn), nil)
+	if err != nil {
+		return DomainData{}, err
+	}
+	resp, err := c.Do(req)
+
+	if err != nil {
+		return DomainData{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return DomainData{}, ErrNotFound
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return DomainData{}, err
+	}
+
+	// Try to decode an array response first.
+	var list []DomainData
+	if err := json.Unmarshal(body, &list); err == nil {
+		if len(list) == 0 {
+			return DomainData{}, ErrNotFound
+		}
+		return list[0], nil
+	}
+
+	// Fallback to single-object decode.
+	var single DomainData
+	if err := json.Unmarshal(body, &single); err == nil {
+		return single, nil
+	}
+
+	return DomainData{}, fmt.Errorf("unable to parse domain response: %s", string(body))
+}
+
+func (c *Client) CreateDomain(domain DomainData) (*DomainData, error) {
+	b, err := json.Marshal(domain)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := c.NewRequest("POST", "/api/v1/domains/", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// if we got a non-2xx response, return an error
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("error creating domain: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var domainData DomainData
+	if err := json.Unmarshal(body, &domainData); err != nil {
+		return nil, fmt.Errorf("unable to parse domain response: %w (body: %s)", err, string(body))
+	}
+	return &domainData, nil
+}
+
+func (c *Client) CreateDomainAccess(access DomainUserPermissionCreateData) (*DomainUserPermissionData, error) {
+
+	// get domain by fqdn
+	domainData, err := c.GetDomain(access.Domain)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get domain data: %w", err)
+	}
+	if domainData.ID == "" {
+		// create the domain here
+		newDomainData, err := c.CreateDomain(DomainData{Fqdn: access.Domain})
+		if err != nil {
+			return nil, fmt.Errorf("unable to create domain: %w", err)
+		}
+		domainData = *newDomainData
+	}
+
+	// set access.Domain to domainData.ID
+	access.Domain = domainData.ID
+
+	b, err := json.Marshal(access)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := c.NewRequest("POST", "/api/v1/domain-user-permissions/", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// if we got a non-2xx response, return an error
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("error creating domain access: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var accessData DomainUserPermissionData
+	if err := json.Unmarshal(body, &accessData); err != nil {
+		return nil, fmt.Errorf("unable to parse domain access response: %w (body: %s)", err, string(body))
+	}
+
+	return &accessData, nil
+}
+
+// DeleteDomainAccess deletes a domain access permission using the provided ID.
+func (c *Client) DeleteDomainAccess(id string) (*http.Response, error) {
+	path := fmt.Sprintf("/api/v1/domain-user-permissions/%s/", id)
+	req, err := c.NewRequest("DELETE", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.Do(req)
+}
+
 // User data types
 type UserData struct {
 	Username string   `json:"username"`
@@ -248,4 +446,24 @@ type UserCreateData struct {
 	Password string   `json:"password"`
 	Email    string   `json:"email"`
 	Groups   []string `json:"groups"`
+}
+
+// DomainUserPermissionCreateData represents a user's access permission to a domain.
+type DomainUserPermissionCreateData struct {
+	UserID      string `json:"user"`
+	Domain      string `json:"domain"`
+	AccessLevel string `json:"access_level"`
+}
+
+// DomainUserPermissionData represents a user's access permission to a domain.
+type DomainUserPermissionData struct {
+	UserID      string `json:"user"`
+	Domain      string `json:"domain"`
+	AccessLevel string `json:"access_level"`
+	ID          string `json:"id"`
+}
+
+type DomainData struct {
+	Fqdn string `json:"fqdn"`
+	ID   string `json:"id"`
 }

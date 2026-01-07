@@ -87,7 +87,7 @@ func TestDeleteUser_AbsoluteURL(t *testing.T) {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
 
-	resp, err := client.DeleteUser(srv.URL + "/api/v1/users/1004/")
+	resp, err := client.DeleteUserById("1004")
 	if err != nil {
 		t.Fatalf("unexpected error deleting user: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestDeleteUser_RelativePath(t *testing.T) {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
 
-	resp, err := client.DeleteUser("/api/v1/users/1004/")
+	resp, err := client.DeleteUserById("1004")
 	if err != nil {
 		t.Fatalf("unexpected error deleting user: %v", err)
 	}
