@@ -53,14 +53,17 @@ func (p *legocharmProvider) Metadata(_ context.Context, _ provider.MetadataReque
 func (p *legocharmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{Attributes: map[string]schema.Attribute{
 		"address": schema.StringAttribute{
-			Optional: true,
+			Optional:    true,
+			Description: "The address of the httprequest-lego-provider server. Can also be provided via LEGOCHARM_ADDRESS environment variable.",
 		},
 		"username": schema.StringAttribute{
-			Optional: true,
+			Optional:    true,
+			Description: "The username for authenticating with the httprequest-lego-provider server. Can also be provided via LEGOCHARM_USERNAME environment variable.",
 		},
 		"password": schema.StringAttribute{
-			Optional:  true,
-			Sensitive: true,
+			Optional:    true,
+			Sensitive:   true,
+			Description: "The password for authenticating with the httprequest-lego-provider server. Can also be provided via LEGOCHARM_PASSWORD environment variable.",
 		},
 	},
 	}
