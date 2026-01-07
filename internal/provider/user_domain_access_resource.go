@@ -42,31 +42,32 @@ func (r *UserDomainAccessResource) Metadata(ctx context.Context, req resource.Me
 
 func (r *UserDomainAccessResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "User domain access resource for LegoCharm",
+		MarkdownDescription: "User domain access resource for httprequest-lego-provider.",
 		Attributes: map[string]schema.Attribute{
 			"user_id": schema.StringAttribute{
-				MarkdownDescription: "User ID",
+				MarkdownDescription: "ID of user to grant domain access to",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"domain": schema.StringAttribute{
-				MarkdownDescription: "Domain",
+				MarkdownDescription: "FQDN of the domain to grant access to",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"access_level": schema.StringAttribute{
-				MarkdownDescription: "Access level",
+				MarkdownDescription: "Access level. Possible values: 'domain' 'subdomain'",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"id": schema.StringAttribute{
-				Computed: true,
+				Computed:            true,
+				MarkdownDescription: "The ID of the user domain access resource, in format 'user_id:domain:access_level'",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
