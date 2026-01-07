@@ -112,7 +112,7 @@ func (c *Client) GetUserById(userId string) (*UserData, error) {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
@@ -143,7 +143,7 @@ func (c *Client) GetUserByUsername(username string) (*UserData, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
@@ -189,7 +189,7 @@ func (c *Client) CreateUser(user UserCreateData) (*UserData, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -233,7 +233,7 @@ func (c *Client) HasValidUserPassword(username string, password string) (bool, e
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	// if result is 401 Unauthorized, the password is incorrect (return false)
 	if resp.StatusCode == http.StatusUnauthorized {
@@ -268,7 +268,7 @@ func (c *Client) GetDomainAccess(userId, domain string) (*DomainUserPermissionDa
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
@@ -307,7 +307,7 @@ func (c *Client) GetDomain(fqdn string) (DomainData, error) {
 	if err != nil {
 		return DomainData{}, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	if resp.StatusCode == http.StatusNotFound {
 		return DomainData{}, ErrNotFound
@@ -351,7 +351,7 @@ func (c *Client) CreateDomain(domain DomainData) (*DomainData, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -406,7 +406,7 @@ func (c *Client) CreateDomainAccess(access DomainUserPermissionCreateData) (*Dom
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

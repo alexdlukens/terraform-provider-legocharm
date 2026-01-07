@@ -170,7 +170,11 @@ func (r *UserDomainAccessResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	r.client.DeleteDomainAccess(int(data.DatabaseID.ValueInt64()))
+	_, err := r.client.DeleteDomainAccess(int(data.DatabaseID.ValueInt64()))
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete user domain access: %s", err))
+		return
+	}
 
 	// recreate with new access level
 	createData := &legocharmclient.DomainUserPermissionCreateData{UserID: data.UserId.ValueString(), Domain: data.Domain.ValueString(), AccessLevel: data.AccessLevel.ValueString()}
