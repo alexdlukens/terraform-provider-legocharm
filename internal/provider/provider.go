@@ -186,5 +186,6 @@ func (p *legocharmProvider) DataSources(_ context.Context) []func() datasource.D
 func (p *legocharmProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewUserResource,
+		NewUserDomainAccessResource,
 	}
 }

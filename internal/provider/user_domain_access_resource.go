@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -23,22 +24,20 @@ var _ resource.ResourceWithImportState = &UserDomainAccessResource{}
 
 func NewUserDomainAccessResource() resource.Resource { return &UserDomainAccessResource{} }
 
-// UserDomainAccessResource is the resource implementation for LegoCharm domain access permissions.
 type UserDomainAccessResource struct {
 	client *legocharmclient.Client
 }
 
-// UserModel maps Terraform schema to Go types.
 type UserDomainAccessModel struct {
 	UserId      types.String `tfsdk:"user_id"`
 	Domain      types.String `tfsdk:"domain"`
 	AccessLevel types.String `tfsdk:"access_level"`
 	Id          types.String `tfsdk:"id"`
-	DatabaseID  types.String `tfsdk:"database_id"`
+	DatabaseID  types.Int64  `tfsdk:"database_id"`
 }
 
 func (r *UserDomainAccessResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_domain_access"
+	resp.TypeName = req.ProviderTypeName + "_user_domain_access"
 }
 
 func (r *UserDomainAccessResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -72,11 +71,17 @@ func (r *UserDomainAccessResource) Schema(ctx context.Context, req resource.Sche
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"database_id": schema.Int64Attribute{
+				MarkdownDescription: "Internal database ID for the domain access permission",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
 		},
 	}
 }
 
-// Create implements resource creation for UserDomainAccessResource.
 func (r *UserDomainAccessResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data UserDomainAccessModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...) // Unmarshal plan
@@ -97,15 +102,19 @@ func (r *UserDomainAccessResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	createData := &legocharmclient.DomainUserPermissionCreateData{UserID: data.UserId.ValueString(), Domain: data.Domain.ValueString(), AccessLevel: data.AccessLevel.ValueString()}
-	r.client.CreateDomainAccess(*createData)
+	domain, err := r.client.CreateDomainAccess(*createData)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create user domain access: %s", err))
+		return
+	}
 
 	// Placeholder: set a fake ID for now
 	data.Id = types.StringValue(data.UserId.ValueString() + ":" + data.Domain.ValueString() + ":" + data.AccessLevel.ValueString())
+	data.DatabaseID = types.Int64Value(int64(domain.ID))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...) // Save state
 }
 
-// Read implements resource reading for UserDomainAccessResource.
 func (r *UserDomainAccessResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data UserDomainAccessModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...) // Unmarshal state
@@ -134,6 +143,7 @@ func (r *UserDomainAccessResource) Read(ctx context.Context, req resource.ReadRe
 		return
 	}
 	data.AccessLevel = types.StringValue(found.AccessLevel)
+	data.DatabaseID = types.Int64Value(int64(found.ID))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...) // Save state
 }
@@ -151,14 +161,26 @@ func (r *UserDomainAccessResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	if data.UserId.IsNull() || data.Domain.IsNull() || data.Id.IsNull() {
+	if data.UserId.IsNull() || data.Domain.IsNull() {
 		resp.Diagnostics.AddError("Invalid State", "User ID or Domain is null in state")
 		return
 	}
+	if data.DatabaseID.IsNull() || data.DatabaseID.ValueInt64() == 0 {
+		resp.Diagnostics.AddError("Invalid State", "Database ID is null or zero in state")
+		return
+	}
 
-	r.client.DeleteDomainAccess(data.Id.ValueString())
+	r.client.DeleteDomainAccess(int(data.DatabaseID.ValueInt64()))
 
 	// recreate with new access level
+	createData := &legocharmclient.DomainUserPermissionCreateData{UserID: data.UserId.ValueString(), Domain: data.Domain.ValueString(), AccessLevel: data.AccessLevel.ValueString()}
+	domain, err := r.client.CreateDomainAccess(*createData)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update user domain access: %s", err))
+		return
+	}
+	data.DatabaseID = types.Int64Value(int64(domain.ID))
+	data.Id = types.StringValue(data.UserId.ValueString() + ":" + data.Domain.ValueString() + ":" + data.AccessLevel.ValueString())
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...) // Save state
 }
@@ -176,8 +198,13 @@ func (r *UserDomainAccessResource) Delete(ctx context.Context, req resource.Dele
 		return
 	}
 
+	if data.DatabaseID.IsNull() || data.DatabaseID.ValueInt64() == 0 {
+		resp.Diagnostics.AddError("Invalid State", "Database ID is null or zero in state")
+		return
+	}
+
 	// TODO: Call client to delete domain access resource
-	_, err := r.client.DeleteDomainAccess(data.Id.ValueString())
+	_, err := r.client.DeleteDomainAccess(int(data.DatabaseID.ValueInt64()))
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete user domain access: %s", err))
 		return

@@ -374,10 +374,10 @@ func (c *Client) CreateDomainAccess(access DomainUserPermissionCreateData) (*Dom
 
 	// get domain by fqdn
 	domainData, err := c.GetDomain(access.Domain)
-	if err != nil {
+	if err != nil && err != ErrNotFound {
 		return nil, fmt.Errorf("unable to get domain data: %w", err)
 	}
-	if domainData.ID == "" {
+	if err == ErrNotFound {
 		// create the domain here
 		newDomainData, err := c.CreateDomain(DomainData{Fqdn: access.Domain})
 		if err != nil {
@@ -386,10 +386,13 @@ func (c *Client) CreateDomainAccess(access DomainUserPermissionCreateData) (*Dom
 		domainData = *newDomainData
 	}
 
-	// set access.Domain to domainData.ID
-	access.Domain = domainData.ID
+	payloadData := DomainUserPermissionCreatePayloadData{
+		UserID:      access.UserID,
+		Domain:      domainData.ID,
+		AccessLevel: access.AccessLevel,
+	}
 
-	b, err := json.Marshal(access)
+	b, err := json.Marshal(payloadData)
 	if err != nil {
 		return nil, err
 	}
@@ -424,8 +427,8 @@ func (c *Client) CreateDomainAccess(access DomainUserPermissionCreateData) (*Dom
 }
 
 // DeleteDomainAccess deletes a domain access permission using the provided ID.
-func (c *Client) DeleteDomainAccess(id string) (*http.Response, error) {
-	path := fmt.Sprintf("/api/v1/domain-user-permissions/%s/", id)
+func (c *Client) DeleteDomainAccess(id int) (*http.Response, error) {
+	path := fmt.Sprintf("/api/v1/domain-user-permissions/%d/", id)
 	req, err := c.NewRequest("DELETE", path, nil)
 	if err != nil {
 		return nil, err
@@ -455,15 +458,22 @@ type DomainUserPermissionCreateData struct {
 	AccessLevel string `json:"access_level"`
 }
 
+// DomainUserPermissionCreateData represents a user's access permission to a domain.
+type DomainUserPermissionCreatePayloadData struct {
+	UserID      string `json:"user"`
+	Domain      int    `json:"domain"`
+	AccessLevel string `json:"access_level"`
+}
+
 // DomainUserPermissionData represents a user's access permission to a domain.
 type DomainUserPermissionData struct {
-	UserID      string `json:"user"`
-	Domain      string `json:"domain"`
+	UserID      int    `json:"user"`
+	Domain      int    `json:"domain"`
 	AccessLevel string `json:"access_level"`
-	ID          string `json:"id"`
+	ID          int    `json:"id"`
 }
 
 type DomainData struct {
 	Fqdn string `json:"fqdn"`
-	ID   string `json:"id"`
+	ID   int    `json:"id"`
 }

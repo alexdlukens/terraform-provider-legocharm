@@ -26,5 +26,3 @@ func TestUserDomainAccessResource_Metadata(t *testing.T) {
 	r.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "legocharm"}, resp)
 	require.Equal(t, "legocharm_domain_access", resp.TypeName)
 }
-
-// Add more tests for CRUD logic as client is implemented.
