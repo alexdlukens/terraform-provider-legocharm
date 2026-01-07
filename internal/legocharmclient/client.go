@@ -1,3 +1,6 @@
+// Copyright 2026 Canonical Ltd.
+// Licensed under the Apache License, Version 2.0, see LICENCE file for details.
+
 package legocharmclient
 
 import (
