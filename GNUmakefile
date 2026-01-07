@@ -1,4 +1,4 @@
-default: fmt lint install generate
+default: fmt lint install generate docs
 
 build:
 	go build -v ./...
@@ -21,4 +21,7 @@ test:
 testacc:
 	TF_ACC=1 go test -v -cover -timeout 120m ./...
 
-.PHONY: fmt lint test testacc build install generate
+docs:
+	cd tools; go generate ./...
+
+.PHONY: fmt lint test testacc build install generate docs

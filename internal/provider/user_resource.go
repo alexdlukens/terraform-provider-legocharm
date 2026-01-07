@@ -1,5 +1,5 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
+// Copyright 2026 Canonical Ltd.
+// Licensed under the Apache License, Version 2.0, see LICENCE file for details.
 
 package provider
 
@@ -250,8 +250,7 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 	// Use ID (URL) if set, otherwise fetch user to get a URL and delete by that.
 	if !data.Id.IsNull() && data.Id.ValueString() != "" {
-		path := fmt.Sprintf("/api/v1/users/%s/", data.Id.ValueString())
-		_, err := r.client.DeleteUser(path)
+		_, err := r.client.DeleteUserById(data.Id.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete user: %s", err))
 			return
@@ -268,7 +267,7 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	_, err = r.client.DeleteUser(user.Url)
+	_, err = r.client.DeleteUserById(legocharmclient.LastPathSegment(user.Url))
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete user: %s", err))
 		return

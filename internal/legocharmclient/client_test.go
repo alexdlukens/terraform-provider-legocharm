@@ -1,3 +1,6 @@
+// Copyright 2026 Canonical Ltd.
+// Licensed under the Apache License, Version 2.0, see LICENCE file for details.
+
 package legocharmclient
 
 import (
@@ -48,7 +51,7 @@ func TestNewRequestSetsBasicAuth(t *testing.T) {
 func TestDo_Succeeds(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		w.Write([]byte("ok")) // nolint:errcheck
 	}))
 	defer srv.Close()
 
@@ -66,7 +69,7 @@ func TestDo_Succeeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error doing request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 OK; got %d", resp.StatusCode)
@@ -87,11 +90,11 @@ func TestDeleteUser_AbsoluteURL(t *testing.T) {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
 
-	resp, err := client.DeleteUser(srv.URL + "/api/v1/users/1004/")
+	resp, err := client.DeleteUserById("1004")
 	if err != nil {
 		t.Fatalf("unexpected error deleting user: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("expected 204 No Content; got %d", resp.StatusCode)
@@ -112,11 +115,11 @@ func TestDeleteUser_RelativePath(t *testing.T) {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
 
-	resp, err := client.DeleteUser("/api/v1/users/1004/")
+	resp, err := client.DeleteUserById("1004")
 	if err != nil {
 		t.Fatalf("unexpected error deleting user: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() // nolint:errcheck
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("expected 204 No Content; got %d", resp.StatusCode)
