@@ -43,8 +43,7 @@ jobs:
           GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
-        with:
-          github_token: ${{ secrets.PAT_WRITE }}
+          PAT_WRITE: ${{ secrets.PAT_WRITE }}
         run: |
           VERSION="${{ inputs.version }}"
           VERSION_NO_V="${VERSION#v}"
@@ -60,7 +59,8 @@ jobs:
           fi
 
           git tag -f "$VERSION" "$COMMIT_SHA" -m "$TAG_MESSAGE"
-          git push origin "$VERSION"
+          # Push using PAT so push succeeds even though checkout did not persist credentials
+          git push "https://x-access-token:${PAT_WRITE}@github.com/${{ github.repository }}" "$VERSION"
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
