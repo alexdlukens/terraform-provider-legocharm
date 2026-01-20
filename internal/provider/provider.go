@@ -31,7 +31,9 @@ func New(version string) func() provider.Provider {
 	}
 }
 
-// legocharmProvider is the provider implementation.
+// legocharmProvider is the provider implementation for LegoCharm.
+// It manages configuration and initialization of the LegoCharm API client
+// for use by resources and data sources.
 type legocharmProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
@@ -40,6 +42,7 @@ type legocharmProvider struct {
 }
 
 // legocharmProviderModel maps provider schema data to a Go type.
+// It contains the configuration needed to connect to the LegoCharm API.
 type legocharmProviderModel struct {
 	Address  types.String `tfsdk:"address"`
 	Username types.String `tfsdk:"username"`

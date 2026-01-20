@@ -27,5 +27,5 @@ func TestUserDomainAccessResource_Metadata(t *testing.T) {
 	r := &UserDomainAccessResource{}
 	resp := &resource.MetadataResponse{}
 	r.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "legocharm"}, resp)
-	require.Equal(t, "legocharm_domain_access", resp.TypeName)
+	require.Equal(t, "legocharm_user_domain_access", resp.TypeName)
 }

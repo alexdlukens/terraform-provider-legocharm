@@ -22,14 +22,16 @@ import (
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
 
+// NewUserResource creates a new user resource.
 func NewUserResource() resource.Resource { return &UserResource{} }
 
 // UserResource is the resource implementation for LegoCharm users.
+// It manages the lifecycle of user resources in the LegoCharm API.
 type UserResource struct {
 	client *legocharmclient.Client
 }
 
-// UserModel maps Terraform schema to Go types.
+// UserModel maps Terraform schema to Go types for user resources.
 type UserModel struct {
 	Username types.String `tfsdk:"username"`
 	Password types.String `tfsdk:"password"`

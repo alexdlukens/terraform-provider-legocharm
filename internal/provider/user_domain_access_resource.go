@@ -22,12 +22,16 @@ import (
 var _ resource.Resource = &UserDomainAccessResource{}
 var _ resource.ResourceWithImportState = &UserDomainAccessResource{}
 
+// NewUserDomainAccessResource creates a new user domain access resource.
 func NewUserDomainAccessResource() resource.Resource { return &UserDomainAccessResource{} }
 
+// UserDomainAccessResource is the resource implementation for LegoCharm user domain access permissions.
+// It manages user permissions for accessing specific domains.
 type UserDomainAccessResource struct {
 	client *legocharmclient.Client
 }
 
+// UserDomainAccessModel maps Terraform schema to Go types for user domain access resources.
 type UserDomainAccessModel struct {
 	UserId      types.String `tfsdk:"user_id"`
 	Domain      types.String `tfsdk:"domain"`
