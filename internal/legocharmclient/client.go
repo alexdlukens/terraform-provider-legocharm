@@ -11,6 +11,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -62,11 +64,25 @@ func NewClient(address, username, password *string) (*Client, error) {
 		}
 	}
 
+	// Determine HTTP client timeout from environment variable LEGOCHARM_API_TIMEOUT.
+	// Accepts either a duration string (e.g. "30s") or an integer number of seconds (e.g. "30").
+	// Defaults to 120 seconds when unset.
+	timeout := 120 * time.Second
+	if v := os.Getenv("LEGOCHARM_API_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			timeout = d
+		} else if s, err2 := strconv.Atoi(v); err2 == nil {
+			timeout = time.Duration(s) * time.Second
+		} else {
+			return nil, fmt.Errorf("invalid LEGOCHARM_API_TIMEOUT %q: %w", v, err)
+		}
+	}
+
 	return &Client{
 		BaseURL:    strings.TrimRight(u, "/"),
 		Username:   *username,
 		Password:   *password,
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{Timeout: timeout},
 	}, nil
 }
 
