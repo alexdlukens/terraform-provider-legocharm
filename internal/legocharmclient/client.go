@@ -11,6 +11,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,6 +29,7 @@ func LastPathSegment(u string) string {
 
 // Client is a lightweight HTTP client for the LegoCharm API. It stores the
 // base URL and credentials and exposes helpers to build and dispatch requests.
+// All methods preserve the original API interactions while following Go conventions.
 type Client struct {
 	BaseURL    string
 	Username   string
@@ -61,11 +64,25 @@ func NewClient(address, username, password *string) (*Client, error) {
 		}
 	}
 
+	// Determine HTTP client timeout from environment variable LEGOCHARM_API_TIMEOUT.
+	// Accepts either a duration string (e.g. "30s") or an integer number of seconds (e.g. "30").
+	// Defaults to 120 seconds when unset.
+	timeout := 120 * time.Second
+	if v := os.Getenv("LEGOCHARM_API_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			timeout = d
+		} else if s, err2 := strconv.Atoi(v); err2 == nil {
+			timeout = time.Duration(s) * time.Second
+		} else {
+			return nil, fmt.Errorf("invalid LEGOCHARM_API_TIMEOUT %q: %w", v, err)
+		}
+	}
+
 	return &Client{
 		BaseURL:    strings.TrimRight(u, "/"),
 		Username:   *username,
 		Password:   *password,
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{Timeout: timeout},
 	}, nil
 }
 
@@ -103,19 +120,19 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 // ErrNotFound is returned when an API lookup yields no results.
 var ErrNotFound = errors.New("not found")
 
-// GetUser queries the API for a user by username and returns the http response.
+// GetUserById queries the API for a user by user ID and returns the user data.
+// Returns ErrNotFound if the user does not exist.
 func (c *Client) GetUserById(userId string) (*UserData, error) {
 
 	req, err := c.NewRequest("GET", "/api/v1/users/"+url.PathEscape(userId)+"/", nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-
-	defer resp.Body.Close() // nolint:errcheck
+	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
@@ -123,16 +140,15 @@ func (c *Client) GetUserById(userId string) (*UserData, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	var userData UserData
 	if err := json.Unmarshal(body, &userData); err != nil {
-		return nil, fmt.Errorf("unable to parse user response: %w (body: %s)", err, string(body))
+		return nil, fmt.Errorf("failed to parse user response: %w (body: %s)", err, string(body))
 	}
 
 	return &userData, nil
-
 }
 
 // GetUserByUsername queries the API for a user by username and returns the
@@ -140,13 +156,13 @@ func (c *Client) GetUserById(userId string) (*UserData, error) {
 func (c *Client) GetUserByUsername(username string) (*UserData, error) {
 	req, err := c.NewRequest("GET", "/api/v1/users/?username="+url.QueryEscape(username), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close() // nolint:errcheck
+	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
@@ -154,7 +170,7 @@ func (c *Client) GetUserByUsername(username string) (*UserData, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Try to decode an array response first.
@@ -172,7 +188,7 @@ func (c *Client) GetUserByUsername(username string) (*UserData, error) {
 		return &single, nil
 	}
 
-	return nil, fmt.Errorf("unable to parse user response: %s", string(body))
+	return nil, fmt.Errorf("failed to parse user response: %s", string(body))
 }
 
 // CreateUser creates a new user by POSTing the provided user object
@@ -180,63 +196,70 @@ func (c *Client) GetUserByUsername(username string) (*UserData, error) {
 func (c *Client) CreateUser(user UserCreateData) (*UserData, error) {
 	b, err := json.Marshal(user)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal user data: %w", err)
 	}
 
 	req, err := c.NewRequest("POST", "/api/v1/users/", bytes.NewReader(b))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close() // nolint:errcheck
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// if we got a non-2xx response, return an error
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("error creating user: status %d, body: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("failed to create user: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var userData UserData
 	if err := json.Unmarshal(body, &userData); err != nil {
-		return nil, fmt.Errorf("unable to parse user response: %w (body: %s)", err, string(body))
+		return nil, fmt.Errorf("failed to parse user response: %w (body: %s)", err, string(body))
 	}
 
 	return &userData, nil
 }
-func (c *Client) DeleteUserById(id string) (*http.Response, error) {
 
-	// Otherwise treat as relative path.
+// DeleteUserById deletes a user by their ID.
+// Returns the HTTP response from the API.
+func (c *Client) DeleteUserById(id string) (*http.Response, error) {
 	req, err := c.NewRequest("DELETE", "/api/v1/users/"+url.PathEscape(id)+"/", nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	return resp, nil
 }
 
-func (c *Client) HasValidUserPassword(username string, password string) (bool, error) {
+// HasValidUserPassword verifies if a username and password combination is valid
+// by attempting to authenticate with the API using those credentials.
+func (c *Client) HasValidUserPassword(username, password string) (bool, error) {
 	// create a new client with the user credentials
 	userClient, err := NewClient(&c.BaseURL, &username, &password)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to create client: %w", err)
 	}
 	req, err := userClient.NewRequest("GET", "/api/v1/users/?username="+url.QueryEscape(username), nil)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := userClient.Do(req)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close() // nolint:errcheck
+	defer resp.Body.Close()
 
 	// if result is 401 Unauthorized, the password is incorrect (return false)
 	if resp.StatusCode == http.StatusUnauthorized {
@@ -252,26 +275,26 @@ func (c *Client) HasValidUserPassword(username string, password string) (bool, e
 
 }
 
+// GetDomainAccess retrieves domain access permissions for a user and domain.
+// Returns ErrNotFound if no matching permission exists.
 func (c *Client) GetDomainAccess(userId, domain string) (*DomainUserPermissionData, error) {
-
 	// get user to fetch username
 	user, err := c.GetUserById(userId)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get user data: %w", err)
+		return nil, fmt.Errorf("failed to get user data: %w", err)
 	}
 
 	username := user.Username
 
 	req, err := c.NewRequest("GET", "/api/v1/domain-user-permissions/?username="+url.QueryEscape(username)+"&fqdn="+url.QueryEscape(domain), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	resp, err := c.Do(req)
-
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close() // nolint:errcheck
+	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
@@ -279,7 +302,7 @@ func (c *Client) GetDomainAccess(userId, domain string) (*DomainUserPermissionDa
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Try to decode an array response first.
@@ -297,20 +320,21 @@ func (c *Client) GetDomainAccess(userId, domain string) (*DomainUserPermissionDa
 		return &single, nil
 	}
 
-	return nil, fmt.Errorf("unable to parse domain access response: %s", string(body))
+	return nil, fmt.Errorf("failed to parse domain access response: %s", string(body))
 }
 
+// GetDomain retrieves domain information by FQDN.
+// Returns ErrNotFound if the domain does not exist.
 func (c *Client) GetDomain(fqdn string) (DomainData, error) {
 	req, err := c.NewRequest("GET", "/api/v1/domains/?fqdn="+url.QueryEscape(fqdn), nil)
 	if err != nil {
-		return DomainData{}, err
+		return DomainData{}, fmt.Errorf("failed to create request: %w", err)
 	}
 	resp, err := c.Do(req)
-
 	if err != nil {
-		return DomainData{}, err
+		return DomainData{}, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close() // nolint:errcheck
+	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return DomainData{}, ErrNotFound
@@ -318,7 +342,7 @@ func (c *Client) GetDomain(fqdn string) (DomainData, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return DomainData{}, err
+		return DomainData{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Try to decode an array response first.
@@ -336,55 +360,57 @@ func (c *Client) GetDomain(fqdn string) (DomainData, error) {
 		return single, nil
 	}
 
-	return DomainData{}, fmt.Errorf("unable to parse domain response: %s", string(body))
+	return DomainData{}, fmt.Errorf("failed to parse domain response: %s", string(body))
 }
 
+// CreateDomain creates a new domain in the LegoCharm API.
 func (c *Client) CreateDomain(domain DomainData) (*DomainData, error) {
 	b, err := json.Marshal(domain)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal domain data: %w", err)
 	}
 
 	req, err := c.NewRequest("POST", "/api/v1/domains/", bytes.NewReader(b))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close() // nolint:errcheck
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// if we got a non-2xx response, return an error
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("error creating domain: status %d, body: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("failed to create domain: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var domainData DomainData
 	if err := json.Unmarshal(body, &domainData); err != nil {
-		return nil, fmt.Errorf("unable to parse domain response: %w (body: %s)", err, string(body))
+		return nil, fmt.Errorf("failed to parse domain response: %w (body: %s)", err, string(body))
 	}
 	return &domainData, nil
 }
 
+// CreateDomainAccess creates a new domain access permission.
+// If the domain does not exist, it will be created automatically.
 func (c *Client) CreateDomainAccess(access DomainUserPermissionCreateData) (*DomainUserPermissionData, error) {
-
 	// get domain by fqdn
 	domainData, err := c.GetDomain(access.Domain)
 	if err != nil && err != ErrNotFound {
-		return nil, fmt.Errorf("unable to get domain data: %w", err)
+		return nil, fmt.Errorf("failed to get domain data: %w", err)
 	}
 	if err == ErrNotFound {
 		// create the domain here
 		newDomainData, err := c.CreateDomain(DomainData{Fqdn: access.Domain})
 		if err != nil {
-			return nil, fmt.Errorf("unable to create domain: %w", err)
+			return nil, fmt.Errorf("failed to create domain: %w", err)
 		}
 		domainData = *newDomainData
 	}
@@ -397,33 +423,33 @@ func (c *Client) CreateDomainAccess(access DomainUserPermissionCreateData) (*Dom
 
 	b, err := json.Marshal(payloadData)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal payload data: %w", err)
 	}
 
 	req, err := c.NewRequest("POST", "/api/v1/domain-user-permissions/", bytes.NewReader(b))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close() // nolint:errcheck
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// if we got a non-2xx response, return an error
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("error creating domain access: status %d, body: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("failed to create domain access: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var accessData DomainUserPermissionData
 	if err := json.Unmarshal(body, &accessData); err != nil {
-		return nil, fmt.Errorf("unable to parse domain access response: %w (body: %s)", err, string(body))
+		return nil, fmt.Errorf("failed to parse domain access response: %w (body: %s)", err, string(body))
 	}
 
 	return &accessData, nil
@@ -434,12 +460,16 @@ func (c *Client) DeleteDomainAccess(id int) (*http.Response, error) {
 	path := fmt.Sprintf("/api/v1/domain-user-permissions/%d/", id)
 	req, err := c.NewRequest("DELETE", path, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	return resp, nil
 }
 
-// User data types
+// UserData represents a user returned from the LegoCharm API.
 type UserData struct {
 	Username string   `json:"username"`
 	Url      string   `json:"url"`
@@ -447,6 +477,7 @@ type UserData struct {
 	Groups   []string `json:"groups"`
 }
 
+// UserCreateData represents the data needed to create a new user.
 type UserCreateData struct {
 	Username string   `json:"username"`
 	Password string   `json:"password"`
@@ -454,21 +485,21 @@ type UserCreateData struct {
 	Groups   []string `json:"groups"`
 }
 
-// DomainUserPermissionCreateData represents a user's access permission to a domain.
+// DomainUserPermissionCreateData represents the input data for creating a user's access permission to a domain.
 type DomainUserPermissionCreateData struct {
 	UserID      string `json:"user"`
 	Domain      string `json:"domain"`
 	AccessLevel string `json:"access_level"`
 }
 
-// DomainUserPermissionCreateData represents a user's access permission to a domain.
+// DomainUserPermissionCreatePayloadData represents the API payload for creating a domain access permission.
 type DomainUserPermissionCreatePayloadData struct {
 	UserID      string `json:"user"`
 	Domain      int    `json:"domain"`
 	AccessLevel string `json:"access_level"`
 }
 
-// DomainUserPermissionData represents a user's access permission to a domain.
+// DomainUserPermissionData represents a user's access permission to a domain as returned from the API.
 type DomainUserPermissionData struct {
 	UserID      int    `json:"user"`
 	Domain      int    `json:"domain"`
@@ -476,6 +507,7 @@ type DomainUserPermissionData struct {
 	ID          int    `json:"id"`
 }
 
+// DomainData represents domain information from the LegoCharm API.
 type DomainData struct {
 	Fqdn string `json:"fqdn"`
 	ID   int    `json:"id"`

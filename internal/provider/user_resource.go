@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -22,14 +23,16 @@ import (
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
 
+// NewUserResource creates a new user resource.
 func NewUserResource() resource.Resource { return &UserResource{} }
 
 // UserResource is the resource implementation for LegoCharm users.
+// It manages the lifecycle of user resources in the LegoCharm API.
 type UserResource struct {
 	client *legocharmclient.Client
 }
 
-// UserModel maps Terraform schema to Go types.
+// UserModel maps Terraform schema to Go types for user resources.
 type UserModel struct {
 	Username types.String `tfsdk:"username"`
 	Password types.String `tfsdk:"password"`
@@ -63,6 +66,8 @@ func (r *UserResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			"email": schema.StringAttribute{
 				MarkdownDescription: "Email address",
 				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString(""),
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
